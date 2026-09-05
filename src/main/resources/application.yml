@@ -5,13 +5,13 @@ spring:
   application:
     name: taskflow
   datasource:
-    url: jdbc:postgresql://localhost:5432/taskflow
-    username: taskflow
-    password: taskflow
+    url: ${TASKFLOW_DB_URL:jdbc:postgresql://localhost:5432/taskflow}
+    username: ${TASKFLOW_DB_USERNAME:taskflow}
+    password: ${TASKFLOW_DB_PASSWORD:taskflow}
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: none
+      ddl-auto: update
     properties:
       hibernate:
         jdbc:
