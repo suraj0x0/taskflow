@@ -1,11 +1,16 @@
 package com.taskflow.auth.service;
 
+import com.taskflow.auth.dto.LoginRequest;
+import com.taskflow.auth.dto.LoginResponse;
 import com.taskflow.auth.dto.RegisterRequest;
 import com.taskflow.auth.dto.RegisterResponse;
 import com.taskflow.auth.exception.DuplicateEmailException;
+import com.taskflow.auth.exception.InvalidCredentialsException;
 import com.taskflow.user.model.Role;
 import com.taskflow.user.model.User;
 import com.taskflow.user.repository.UserRepository;
+
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -117,6 +122,74 @@ class AuthServiceTest {
         assertEquals("bob@example.com", response.getEmail());
         assertEquals("Bob Builder", response.getName());
         verify(userRepository).existsByEmail("bob@example.com");
+    }
+
+    @Test
+    @DisplayName("Successful login: finds user by email, verifies password via PasswordEncoder, returns safe LoginResponse")
+    void shouldLoginSuccessfully() {
+        UUID userId = UUID.randomUUID();
+        User user = new User("Jane Worker", "jane@example.com", "$2a$10$hashedPassword", Role.WORKER);
+        user.setId(userId);
+
+        when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("SecurePassword123!", "$2a$10$hashedPassword")).thenReturn(true);
+
+        LoginRequest loginRequest = new LoginRequest("jane@example.com", "SecurePassword123!");
+        LoginResponse response = authService.login(loginRequest);
+
+        assertNotNull(response);
+        assertEquals(userId, response.getId());
+        assertEquals("Jane Worker", response.getName());
+        assertEquals("jane@example.com", response.getEmail());
+        assertEquals(Role.WORKER, response.getRole());
+    }
+
+    @Test
+    @DisplayName("Wrong password throws generic InvalidCredentialsException")
+    void shouldFailLoginWhenPasswordIsWrong() {
+        User user = new User("Jane Worker", "jane@example.com", "$2a$10$hashedPassword", Role.WORKER);
+
+        when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("WrongPassword!", "$2a$10$hashedPassword")).thenReturn(false);
+
+        LoginRequest loginRequest = new LoginRequest("jane@example.com", "WrongPassword!");
+        InvalidCredentialsException ex = assertThrows(
+                InvalidCredentialsException.class,
+                () -> authService.login(loginRequest)
+        );
+
+        assertEquals("Invalid email or password", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("Unknown email throws generic InvalidCredentialsException without revealing email absence")
+    void shouldFailLoginWhenEmailNotFound() {
+        when(userRepository.findByEmail("unknown@example.com")).thenReturn(Optional.empty());
+
+        LoginRequest loginRequest = new LoginRequest("unknown@example.com", "SomePassword123!");
+        InvalidCredentialsException ex = assertThrows(
+                InvalidCredentialsException.class,
+                () -> authService.login(loginRequest)
+        );
+
+        assertEquals("Invalid email or password", ex.getMessage());
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Login normalizes email (trim and lowercase) before lookup")
+    void shouldNormalizeEmailDuringLogin() {
+        User user = new User("Jane Worker", "jane@example.com", "$2a$10$hashedPassword", Role.WORKER);
+
+        when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("SecurePassword123!", "$2a$10$hashedPassword")).thenReturn(true);
+
+        LoginRequest loginRequest = new LoginRequest("   JANE@EXAMPLE.COM   ", "SecurePassword123!");
+        LoginResponse response = authService.login(loginRequest);
+
+        assertNotNull(response);
+        assertEquals("jane@example.com", response.getEmail());
+        verify(userRepository).findByEmail("jane@example.com");
     }
 }
 

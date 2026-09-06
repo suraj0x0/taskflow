@@ -1,9 +1,12 @@
 package com.taskflow.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taskflow.auth.dto.LoginRequest;
+import com.taskflow.auth.dto.LoginResponse;
 import com.taskflow.auth.dto.RegisterRequest;
 import com.taskflow.auth.dto.RegisterResponse;
 import com.taskflow.auth.exception.DuplicateEmailException;
+import com.taskflow.auth.exception.InvalidCredentialsException;
 import com.taskflow.auth.service.AuthService;
 import com.taskflow.user.model.Role;
 import com.taskflow.web.exception.GlobalExceptionHandler;
@@ -95,6 +98,60 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.error").value("Conflict"))
                 .andExpect(jsonPath("$.message").value("Email is already registered: duplicate@example.com"));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/login with valid credentials returns 200 OK and safe LoginResponse")
+    void shouldReturnOkOnValidLogin() throws Exception {
+        UUID id = UUID.randomUUID();
+        LoginResponse response = new LoginResponse(id, "Jane Worker", "jane@example.com", Role.WORKER);
+
+        when(authService.login(any(LoginRequest.class))).thenReturn(response);
+
+        LoginRequest request = new LoginRequest("jane@example.com", "SecurePassword123!");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.name").value("Jane Worker"))
+                .andExpect(jsonPath("$.email").value("jane@example.com"))
+                .andExpect(jsonPath("$.role").value("WORKER"))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/login with invalid credentials returns 401 Unauthorized")
+    void shouldReturnUnauthorizedOnInvalidCredentials() throws Exception {
+        when(authService.login(any(LoginRequest.class)))
+                .thenThrow(new InvalidCredentialsException("Invalid email or password"));
+
+        LoginRequest request = new LoginRequest("jane@example.com", "WrongPassword!");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Invalid email or password"));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/login with invalid input returns 400 Bad Request")
+    void shouldReturnBadRequestOnInvalidLoginInput() throws Exception {
+        LoginRequest invalidRequest = new LoginRequest("", "");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.errors.email").exists())
+                .andExpect(jsonPath("$.errors.password").exists());
     }
 }
 
