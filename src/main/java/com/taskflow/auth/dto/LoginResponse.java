@@ -11,6 +11,7 @@ public class LoginResponse {
     private String name;
     private String email;
     private Role role;
+    private String token;
 
     public LoginResponse() {
     }
@@ -29,6 +30,12 @@ public class LoginResponse {
                 user.getEmail(),
                 user.getRole()
         );
+    }
+
+    public static LoginResponse from(User user, String token) {
+        LoginResponse r = from(user);
+        r.setToken(token);
+        return r;
     }
 
     public UUID getId() {
@@ -62,5 +69,12 @@ public class LoginResponse {
     public void setRole(Role role) {
         this.role = role;
     }
-}
 
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+}
