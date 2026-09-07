@@ -6,6 +6,7 @@ import com.taskflow.auth.dto.RegisterRequest;
 import com.taskflow.auth.dto.RegisterResponse;
 import com.taskflow.auth.exception.DuplicateEmailException;
 import com.taskflow.auth.exception.InvalidCredentialsException;
+import com.taskflow.security.JwtService;
 import com.taskflow.user.model.Role;
 import com.taskflow.user.model.User;
 import com.taskflow.user.repository.UserRepository;
@@ -42,6 +43,9 @@ class AuthServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private JwtService jwtService;
 
     @InjectMocks
     private AuthService authService;
@@ -133,6 +137,7 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("SecurePassword123!", "$2a$10$hashedPassword")).thenReturn(true);
+        when(jwtService.generateToken(user)).thenReturn("jwt-token");
 
         LoginRequest loginRequest = new LoginRequest("jane@example.com", "SecurePassword123!");
         LoginResponse response = authService.login(loginRequest);
@@ -142,6 +147,7 @@ class AuthServiceTest {
         assertEquals("Jane Worker", response.getName());
         assertEquals("jane@example.com", response.getEmail());
         assertEquals(Role.WORKER, response.getRole());
+        assertEquals("jwt-token", response.getToken());
     }
 
     @Test
@@ -183,6 +189,7 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("SecurePassword123!", "$2a$10$hashedPassword")).thenReturn(true);
+        when(jwtService.generateToken(user)).thenReturn("jwt-token");
 
         LoginRequest loginRequest = new LoginRequest("   JANE@EXAMPLE.COM   ", "SecurePassword123!");
         LoginResponse response = authService.login(loginRequest);

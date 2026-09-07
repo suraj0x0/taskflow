@@ -8,7 +8,12 @@ import com.taskflow.auth.dto.RegisterResponse;
 import com.taskflow.auth.exception.DuplicateEmailException;
 import com.taskflow.auth.exception.InvalidCredentialsException;
 import com.taskflow.auth.service.AuthService;
+import com.taskflow.security.JwtAuthenticationFilter;
+import com.taskflow.security.JwtService;
+import com.taskflow.security.config.SecurityConfig;
 import com.taskflow.user.model.Role;
+import com.taskflow.user.model.User;
+import com.taskflow.user.repository.UserRepository;
 import com.taskflow.web.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,17 +26,19 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AuthController.class)
-@AutoConfigureMockMvc(addFilters = false)
-@Import(GlobalExceptionHandler.class)
+@AutoConfigureMockMvc
+@Import({GlobalExceptionHandler.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 class AuthControllerTest {
 
     @Autowired
@@ -42,6 +49,12 @@ class AuthControllerTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     @Test
     @DisplayName("POST /api/auth/register with valid payload returns 201 Created and safe response")
@@ -104,7 +117,7 @@ class AuthControllerTest {
     @DisplayName("POST /api/auth/login with valid credentials returns 200 OK and safe LoginResponse")
     void shouldReturnOkOnValidLogin() throws Exception {
         UUID id = UUID.randomUUID();
-        LoginResponse response = new LoginResponse(id, "Jane Worker", "jane@example.com", Role.WORKER);
+        LoginResponse response = new LoginResponse(id, "Jane Worker", "jane@example.com", Role.WORKER, "jwt-token");
 
         when(authService.login(any(LoginRequest.class))).thenReturn(response);
 
@@ -118,6 +131,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.name").value("Jane Worker"))
                 .andExpect(jsonPath("$.email").value("jane@example.com"))
                 .andExpect(jsonPath("$.role").value("WORKER"))
+                .andExpect(jsonPath("$.token").value("jwt-token"))
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
     }
@@ -152,6 +166,43 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.errors.email").exists())
                 .andExpect(jsonPath("$.errors.password").exists());
+    }
+
+    @Test
+    @DisplayName("GET /api/auth/me without a token returns 401 Unauthorized")
+    void shouldRejectUnauthenticatedMeRequest() throws Exception {
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/auth/me with a valid JWT returns the current user")
+    void shouldReturnCurrentUserForValidJwt() throws Exception {
+        UUID id = UUID.randomUUID();
+        User user = new User("Jane Worker", "jane@example.com", Role.WORKER);
+        user.setId(id);
+
+        when(jwtService.isTokenValid("valid-token")).thenReturn(true);
+        when(jwtService.extractEmail("valid-token")).thenReturn("jane@example.com");
+        when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
+        when(authService.findByEmail("jane@example.com")).thenReturn(Optional.of(user));
+
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer valid-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.name").value("Jane Worker"))
+                .andExpect(jsonPath("$.email").value("jane@example.com"))
+                .andExpect(jsonPath("$.role").value("WORKER"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET /api/auth/me with an invalid JWT returns 401 Unauthorized")
+    void shouldRejectInvalidJwt() throws Exception {
+        when(jwtService.isTokenValid("invalid-token")).thenReturn(false);
+
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer invalid-token"))
+                .andExpect(status().isUnauthorized());
     }
 }
 

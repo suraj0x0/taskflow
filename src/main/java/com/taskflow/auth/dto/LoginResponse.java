@@ -11,23 +11,30 @@ public class LoginResponse {
     private String name;
     private String email;
     private Role role;
+    private String token;
 
     public LoginResponse() {
     }
 
     public LoginResponse(UUID id, String name, String email, Role role) {
+        this(id, name, email, role, null);
+    }
+
+    public LoginResponse(UUID id, String name, String email, Role role, String token) {
         this.id = id;
         this.name = name;
         this.email = email;
         this.role = role;
+        this.token = token;
     }
 
-    public static LoginResponse from(User user) {
+    public static LoginResponse from(User user, String token) {
         return new LoginResponse(
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
-                user.getRole()
+                user.getRole(),
+                token
         );
     }
 
@@ -61,6 +68,14 @@ public class LoginResponse {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
     }
 }
 

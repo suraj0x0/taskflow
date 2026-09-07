@@ -17,6 +17,12 @@ spring:
         jdbc:
           time_zone: UTC
 
+taskflow:
+  jwt:
+    # Development-only fallback; set TASKFLOW_JWT_SECRET in production.
+    secret: ${TASKFLOW_JWT_SECRET:ZGV2ZWxvcG1lbnQtb25seS10YXNrZmxvdy1qd3Qtc2VjcmV0LWtleS0zMmJ5dGVz}
+    expiration-ms: ${TASKFLOW_JWT_EXPIRATION_MS:86400000}
+
 management:
   endpoints:
     web:
