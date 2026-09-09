@@ -6,6 +6,7 @@ import com.taskflow.user.exception.UserNotFoundException;
 import com.taskflow.user.exception.InvalidCurrentPasswordException;
 import com.taskflow.user.exception.ProtectedUserOperationException;
 import com.taskflow.project.exception.ProjectNotFoundException;
+import com.taskflow.task.exception.TaskNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -91,6 +92,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ProjectNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleProjectNotFoundException(
             ProjectNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(TaskNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleTaskNotFoundException(
+            TaskNotFoundException ex,
             HttpServletRequest request
     ) {
         return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
