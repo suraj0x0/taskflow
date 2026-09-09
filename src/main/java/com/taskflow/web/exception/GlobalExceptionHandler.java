@@ -5,9 +5,11 @@ import com.taskflow.auth.exception.InvalidCredentialsException;
 import com.taskflow.user.exception.UserNotFoundException;
 import com.taskflow.user.exception.InvalidCurrentPasswordException;
 import com.taskflow.user.exception.ProtectedUserOperationException;
+import com.taskflow.project.exception.ProjectNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -86,6 +88,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
+    @ExceptionHandler(ProjectNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleProjectNotFoundException(
+            ProjectNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
             IllegalArgumentException ex,
@@ -115,6 +125,14 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return errorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(
+            AccessDeniedException ex,
+            HttpServletRequest request
+    ) {
+        return errorResponse(HttpStatus.FORBIDDEN, "Forbidden", request);
     }
 
     private ResponseEntity<Map<String, Object>> errorResponse(
