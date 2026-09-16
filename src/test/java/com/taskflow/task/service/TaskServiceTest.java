@@ -2,8 +2,10 @@ package com.taskflow.task.service;
 
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
+import com.taskflow.task.dto.AssignTaskRequest;
 import com.taskflow.task.dto.CreateTaskRequest;
 import com.taskflow.task.dto.UpdateTaskRequest;
+import com.taskflow.task.dto.UpdateTaskStatusRequest;
 import com.taskflow.task.exception.TaskNotFoundException;
 import com.taskflow.task.model.Task;
 import com.taskflow.task.model.TaskPriority;
@@ -120,6 +122,106 @@ class TaskServiceTest {
         verify(taskRepository).findByProjectId(projectId);
     }
 
+        @Test
+        void adminAndManagerCanAssignWorkers() {
+        User admin = user("admin@example.com", Role.ADMIN);
+        User manager = user("manager@example.com", Role.MANAGER);
+        User worker = user("worker@example.com", Role.WORKER);
+        Task adminTask = task(admin);
+        Task managerTask = task(manager);
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
+        when(userRepository.findByEmail("manager@example.com")).thenReturn(Optional.of(manager));
+        when(userRepository.findById(worker.getId())).thenReturn(Optional.of(worker));
+        when(taskRepository.findById(adminTask.getId())).thenReturn(Optional.of(adminTask));
+        when(taskRepository.findById(managerTask.getId())).thenReturn(Optional.of(managerTask));
+        when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertEquals(worker.getId(), taskService.assignTask(adminTask.getId(),
+            new AssignTaskRequest(worker.getId()), "admin@example.com").assigneeId());
+        assertEquals(worker.getId(), taskService.assignTask(managerTask.getId(),
+            new AssignTaskRequest(worker.getId()), "manager@example.com").assigneeId());
+        }
+
+        @Test
+        void assignmentRejectsMissingTaskMissingUserAndNonWorkers() {
+        User admin = user("admin@example.com", Role.ADMIN);
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
+        UUID taskId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(taskRepository.findById(taskId)).thenReturn(Optional.empty());
+        assertThrows(TaskNotFoundException.class, () -> taskService.assignTask(taskId,
+            new AssignTaskRequest(userId), "admin@example.com"));
+
+        Task task = task(admin);
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        assertThrows(RuntimeException.class, () -> taskService.assignTask(task.getId(),
+            new AssignTaskRequest(userId), "admin@example.com"));
+
+        User manager = user("manager-target@example.com", Role.MANAGER);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(manager));
+        assertThrows(IllegalArgumentException.class, () -> taskService.assignTask(task.getId(),
+            new AssignTaskRequest(userId), "admin@example.com"));
+        }
+
+        @Test
+        void assignedWorkerCanAdvanceStatusOnlyThroughValidTransitions() {
+        User worker = user("worker@example.com", Role.WORKER);
+        Task task = task(worker);
+        task.setAssignee(worker);
+        when(userRepository.findByEmail("worker@example.com")).thenReturn(Optional.of(worker));
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(taskRepository.save(task)).thenReturn(task);
+
+        taskService.updateTaskStatus(task.getId(), "worker@example.com",
+            new UpdateTaskStatusRequest(TaskStatus.IN_PROGRESS));
+        assertEquals(TaskStatus.IN_PROGRESS, task.getStatus());
+        taskService.updateTaskStatus(task.getId(), "worker@example.com",
+            new UpdateTaskStatusRequest(TaskStatus.DONE));
+        assertEquals(TaskStatus.DONE, task.getStatus());
+        }
+
+        @Test
+        void workerStatusWorkflowRejectsUnassignedDifferentAndInvalidTransitions() {
+        User worker = user("worker@example.com", Role.WORKER);
+        User otherWorker = user("other@example.com", Role.WORKER);
+        Task unassigned = task(worker);
+        Task otherTask = task(worker);
+        otherTask.setAssignee(otherWorker);
+        Task done = task(worker);
+        done.setAssignee(worker);
+        done.setStatus(TaskStatus.DONE);
+        when(userRepository.findByEmail("worker@example.com")).thenReturn(Optional.of(worker));
+        when(taskRepository.findById(unassigned.getId())).thenReturn(Optional.of(unassigned));
+        when(taskRepository.findById(otherTask.getId())).thenReturn(Optional.of(otherTask));
+        when(taskRepository.findById(done.getId())).thenReturn(Optional.of(done));
+
+        assertThrows(AccessDeniedException.class, () -> taskService.updateTaskStatus(unassigned.getId(),
+            "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.IN_PROGRESS)));
+        assertThrows(AccessDeniedException.class, () -> taskService.updateTaskStatus(otherTask.getId(),
+            "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.IN_PROGRESS)));
+        assertThrows(IllegalArgumentException.class, () -> taskService.updateTaskStatus(done.getId(),
+            "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.TODO)));
+        }
+
+        @Test
+        void workerCannotSkipOrReverseStatusTransitions() {
+        User worker = user("worker@example.com", Role.WORKER);
+        Task todo = task(worker);
+        todo.setAssignee(worker);
+        Task inProgress = task(worker);
+        inProgress.setAssignee(worker);
+        inProgress.setStatus(TaskStatus.IN_PROGRESS);
+        when(userRepository.findByEmail("worker@example.com")).thenReturn(Optional.of(worker));
+        when(taskRepository.findById(todo.getId())).thenReturn(Optional.of(todo));
+        when(taskRepository.findById(inProgress.getId())).thenReturn(Optional.of(inProgress));
+
+        assertThrows(IllegalArgumentException.class, () -> taskService.updateTaskStatus(todo.getId(),
+            "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.DONE)));
+        assertThrows(IllegalArgumentException.class, () -> taskService.updateTaskStatus(inProgress.getId(),
+            "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.TODO)));
+        }
+
     private User user(String email, Role role) {
         User user = new User("User", email, "hash", role);
         user.setId(UUID.randomUUID());
@@ -130,5 +232,12 @@ class TaskServiceTest {
         Project project = new Project("Project", "Description", user);
         project.setId(UUID.randomUUID());
         return project;
+    }
+
+    private Task task(User creator) {
+        Task task = new Task("Task", "Description", TaskStatus.TODO, TaskPriority.MEDIUM,
+                project(creator), creator);
+        task.setId(UUID.randomUUID());
+        return task;
     }
 }

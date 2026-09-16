@@ -1,8 +1,10 @@
 package com.taskflow.task.controller;
 
 import com.taskflow.task.dto.CreateTaskRequest;
+import com.taskflow.task.dto.AssignTaskRequest;
 import com.taskflow.task.dto.TaskResponse;
 import com.taskflow.task.dto.UpdateTaskRequest;
+import com.taskflow.task.dto.UpdateTaskStatusRequest;
 import com.taskflow.task.service.TaskService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -55,6 +57,24 @@ public class TaskController {
             @Valid @RequestBody UpdateTaskRequest request
     ) {
         return ResponseEntity.ok(taskService.updateTask(id, authentication.getName(), request));
+    }
+
+    @PatchMapping("/api/tasks/{id}/assignee")
+    public ResponseEntity<TaskResponse> assign(
+            Authentication authentication,
+            @PathVariable UUID id,
+            @Valid @RequestBody AssignTaskRequest request
+    ) {
+        return ResponseEntity.ok(taskService.assignTask(id, request, authentication.getName()));
+    }
+
+    @PatchMapping("/api/tasks/{id}/status")
+    public ResponseEntity<TaskResponse> updateStatus(
+            Authentication authentication,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateTaskStatusRequest request
+    ) {
+        return ResponseEntity.ok(taskService.updateTaskStatus(id, authentication.getName(), request));
     }
 
     @DeleteMapping("/api/tasks/{id}")

@@ -4,7 +4,9 @@ import com.taskflow.project.exception.ProjectNotFoundException;
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
 import com.taskflow.task.dto.CreateTaskRequest;
+import com.taskflow.task.dto.AssignTaskRequest;
 import com.taskflow.task.dto.TaskResponse;
+import com.taskflow.task.dto.UpdateTaskStatusRequest;
 import com.taskflow.task.dto.UpdateTaskRequest;
 import com.taskflow.task.exception.TaskNotFoundException;
 import com.taskflow.task.model.Task;
@@ -74,6 +76,36 @@ public class TaskService {
     }
 
     @Transactional
+    public TaskResponse assignTask(UUID id, AssignTaskRequest request, String authenticatedEmail) {
+        requireManagerOrAdmin(findUser(authenticatedEmail));
+        Task task = findTask(id);
+        User worker = userRepository.findById(request.getWorkerId())
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+        if (worker.getRole() != Role.WORKER) {
+            throw new IllegalArgumentException("Tasks may only be assigned to workers");
+        }
+        task.setAssignee(worker);
+        return toResponse(taskRepository.save(task));
+    }
+
+    @Transactional
+    public TaskResponse updateTaskStatus(UUID id, String authenticatedEmail, UpdateTaskStatusRequest request) {
+        User worker = findUser(authenticatedEmail);
+        if (worker.getRole() != Role.WORKER) {
+            throw new AccessDeniedException("Only assigned workers may use the task status workflow");
+        }
+        Task task = findTask(id);
+        if (task.getAssignee() == null || !task.getAssignee().getId().equals(worker.getId())) {
+            throw new AccessDeniedException("Only the assigned worker may update task status");
+        }
+        if (!isValidWorkerTransition(task.getStatus(), request.getStatus())) {
+            throw new IllegalArgumentException("Invalid task status transition");
+        }
+        task.setStatus(request.getStatus());
+        return toResponse(taskRepository.save(task));
+    }
+
+    @Transactional
     public void deleteTask(UUID id, String authenticatedEmail) {
         requireManagerOrAdmin(findUser(authenticatedEmail));
         taskRepository.delete(findTask(id));
@@ -98,6 +130,11 @@ public class TaskService {
         if (user.getRole() != Role.ADMIN && user.getRole() != Role.MANAGER) {
             throw new AccessDeniedException("Only administrators and managers may modify tasks");
         }
+    }
+
+    private boolean isValidWorkerTransition(TaskStatus current, TaskStatus requested) {
+        return (current == TaskStatus.TODO && requested == TaskStatus.IN_PROGRESS)
+                || (current == TaskStatus.IN_PROGRESS && requested == TaskStatus.DONE);
     }
 
     private TaskResponse toResponse(Task task) {
