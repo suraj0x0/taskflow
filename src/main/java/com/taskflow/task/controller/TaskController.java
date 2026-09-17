@@ -5,10 +5,16 @@ import com.taskflow.task.dto.AssignTaskRequest;
 import com.taskflow.task.dto.TaskResponse;
 import com.taskflow.task.dto.UpdateTaskRequest;
 import com.taskflow.task.dto.UpdateTaskStatusRequest;
+import com.taskflow.task.model.TaskPriority;
+import com.taskflow.task.model.TaskStatus;
 import com.taskflow.task.service.TaskService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,6 +56,34 @@ public class TaskController {
         return ResponseEntity.ok(taskService.findById(id));
     }
 
+    @GetMapping("/api/tasks/search")
+    public ResponseEntity<Page<TaskResponse>> search(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String q,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String projectId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String status,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String priority,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String assigneeId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "createdAt") String sortBy,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "desc") String direction,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "10") int size
+    ) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page must be at least 0");
+        }
+        if (size < 1 || size > 50) {
+            throw new IllegalArgumentException("Size must be between 1 and 50");
+        }
+        UUID parsedProjectId = parseUuid(projectId, "projectId");
+        UUID parsedAssigneeId = parseUuid(assigneeId, "assigneeId");
+        TaskStatus parsedStatus = parseStatus(status);
+        TaskPriority parsedPriority = parsePriority(priority);
+        Sort sort = Sort.by(parseDirection(direction), parseSortProperty(sortBy));
+        Pageable pageable = PageRequest.of(page, size, sort);
+        return ResponseEntity.ok(taskService.searchTasks(q, parsedProjectId, parsedStatus,
+                parsedPriority, parsedAssigneeId, pageable));
+    }
+
     @PatchMapping("/api/tasks/{id}")
     public ResponseEntity<TaskResponse> update(
             Authentication authentication,
@@ -81,5 +115,49 @@ public class TaskController {
     public ResponseEntity<Void> delete(Authentication authentication, @PathVariable UUID id) {
         taskService.deleteTask(id, authentication.getName());
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID parseUuid(String value, String parameter) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid " + parameter);
+        }
+    }
+
+    private TaskStatus parseStatus(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return TaskStatus.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid status");
+        }
+    }
+
+    private TaskPriority parsePriority(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return TaskPriority.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid priority");
+        }
+    }
+
+    private String parseSortProperty(String value) {
+        return switch (value) {
+            case "createdAt", "updatedAt", "title", "priority", "status" -> value;
+            default -> throw new IllegalArgumentException("Invalid sortBy");
+        };
+    }
+
+    private Sort.Direction parseDirection(String value) {
+        try {
+            return Sort.Direction.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid direction");
+        }
     }
 }

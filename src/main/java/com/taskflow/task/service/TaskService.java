@@ -10,8 +10,10 @@ import com.taskflow.task.dto.UpdateTaskStatusRequest;
 import com.taskflow.task.dto.UpdateTaskRequest;
 import com.taskflow.task.exception.TaskNotFoundException;
 import com.taskflow.task.model.Task;
+import com.taskflow.task.model.TaskPriority;
 import com.taskflow.task.model.TaskStatus;
 import com.taskflow.task.repository.TaskRepository;
+import com.taskflow.task.repository.TaskSpecifications;
 import com.taskflow.user.exception.UserNotFoundException;
 import com.taskflow.user.model.Role;
 import com.taskflow.user.model.User;
@@ -19,6 +21,9 @@ import com.taskflow.user.repository.UserRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
 import java.util.UUID;
@@ -56,6 +61,19 @@ public class TaskService {
     @Transactional(readOnly = true)
     public TaskResponse findById(UUID id) {
         return toResponse(findTask(id));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TaskResponse> searchTasks(String query, UUID projectId, TaskStatus status,
+                                          TaskPriority priority, UUID assigneeId, Pageable pageable) {
+        Specification<Task> specification = Specification.allOf(
+                TaskSpecifications.textContains(query),
+                TaskSpecifications.belongsToProject(projectId),
+                TaskSpecifications.hasStatus(status),
+                TaskSpecifications.hasPriority(priority),
+                TaskSpecifications.assignedTo(assigneeId)
+        );
+        return taskRepository.findAll(specification, pageable).map(this::toResponse);
     }
 
     @Transactional
