@@ -2,6 +2,8 @@ package com.taskflow.task.service;
 
 import com.taskflow.activity.model.ActivityType;
 import com.taskflow.activity.service.ActivityService;
+import com.taskflow.notification.model.NotificationType;
+import com.taskflow.notification.service.NotificationService;
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
 import com.taskflow.task.dto.AssignTaskRequest;
@@ -44,6 +46,7 @@ class TaskServiceTest {
     @Mock private ProjectRepository projectRepository;
     @Mock private UserRepository userRepository;
     @Mock private ActivityService activityService;
+    @Mock private NotificationService notificationService;
     @InjectMocks private TaskService taskService;
 
     @Test
@@ -78,9 +81,12 @@ class TaskServiceTest {
                 UUID.randomUUID(), "worker@example.com", new CreateTaskRequest("Task", null, TaskPriority.LOW)));
         assertThrows(AccessDeniedException.class, () -> taskService.updateTask(
                 UUID.randomUUID(), "worker@example.com", new UpdateTaskRequest("Task", null, null, null)));
+        assertThrows(AccessDeniedException.class, () -> taskService.assignTask(
+                UUID.randomUUID(), new AssignTaskRequest(UUID.randomUUID()), "worker@example.com"));
         assertThrows(AccessDeniedException.class, () -> taskService.deleteTask(
                 UUID.randomUUID(), "worker@example.com"));
         verify(activityService, never()).record(any(), any(), any(), any());
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
     }
 
     @Test
@@ -160,6 +166,26 @@ class TaskServiceTest {
 
         verify(activityService).record(adminTask.getId(), admin, ActivityType.TASK_ASSIGNED, "Task assigned");
         verify(activityService).record(managerTask.getId(), manager, ActivityType.TASK_ASSIGNED, "Task assigned");
+        verify(notificationService).createNotification(worker, adminTask.getId(), NotificationType.TASK_ASSIGNED,
+                "You have been assigned a task: Task");
+        verify(notificationService).createNotification(worker, managerTask.getId(), NotificationType.TASK_ASSIGNED,
+                "You have been assigned a task: Task");
+        }
+
+        @Test
+        void assigningTaskToCurrentWorkerDoesNotCreateDuplicateNotification() {
+        User manager = user("manager@example.com", Role.MANAGER);
+        User worker = user("worker@example.com", Role.WORKER);
+        Task task = task(manager);
+        task.setAssignee(worker);
+        when(userRepository.findByEmail("manager@example.com")).thenReturn(Optional.of(manager));
+        when(userRepository.findById(worker.getId())).thenReturn(Optional.of(worker));
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(taskRepository.save(task)).thenReturn(task);
+
+        taskService.assignTask(task.getId(), new AssignTaskRequest(worker.getId()), "manager@example.com");
+
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
         }
 
         @Test
@@ -182,6 +208,7 @@ class TaskServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(manager));
         assertThrows(IllegalArgumentException.class, () -> taskService.assignTask(task.getId(),
             new AssignTaskRequest(userId), "admin@example.com"));
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
         }
 
         @Test
@@ -201,6 +228,24 @@ class TaskServiceTest {
         assertEquals(TaskStatus.DONE, task.getStatus());
 
         verify(activityService, times(2)).record(task.getId(), worker, ActivityType.TASK_STATUS_CHANGED, "Task status changed");
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
+        }
+
+        @Test
+        void validStatusChangeNotifiesTaskCreatorWhenCreatorIsNotActor() {
+        User creator = user("manager@example.com", Role.MANAGER);
+        User worker = user("worker@example.com", Role.WORKER);
+        Task task = task(creator);
+        task.setAssignee(worker);
+        when(userRepository.findByEmail("worker@example.com")).thenReturn(Optional.of(worker));
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(taskRepository.save(task)).thenReturn(task);
+
+        taskService.updateTaskStatus(task.getId(), "worker@example.com",
+                new UpdateTaskStatusRequest(TaskStatus.IN_PROGRESS));
+
+        verify(notificationService).createNotification(creator, task.getId(), NotificationType.TASK_STATUS_CHANGED,
+                "Task 'Task' changed status to IN_PROGRESS.");
         }
 
         @Test
@@ -224,6 +269,7 @@ class TaskServiceTest {
             "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.IN_PROGRESS)));
         assertThrows(IllegalArgumentException.class, () -> taskService.updateTaskStatus(done.getId(),
             "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.TODO)));
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
         }
 
         @Test
@@ -242,6 +288,7 @@ class TaskServiceTest {
             "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.DONE)));
         assertThrows(IllegalArgumentException.class, () -> taskService.updateTaskStatus(inProgress.getId(),
             "worker@example.com", new UpdateTaskStatusRequest(TaskStatus.TODO)));
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
         }
 
     private User user(String email, Role role) {

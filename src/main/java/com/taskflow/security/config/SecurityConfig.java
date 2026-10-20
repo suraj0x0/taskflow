@@ -38,6 +38,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me", "/api/users/me/password").authenticated()
+                        .requestMatchers("/api/notifications/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/users", "/api/users/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/users").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*").hasRole("ADMIN")

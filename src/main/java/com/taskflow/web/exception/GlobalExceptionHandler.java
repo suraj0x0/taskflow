@@ -3,6 +3,7 @@ package com.taskflow.web.exception;
 import com.taskflow.auth.exception.DuplicateEmailException;
 import com.taskflow.auth.exception.InvalidCredentialsException;
 import com.taskflow.comment.exception.CommentNotFoundException;
+import com.taskflow.notification.exception.NotificationNotFoundException;
 import com.taskflow.user.exception.UserNotFoundException;
 import com.taskflow.user.exception.InvalidCurrentPasswordException;
 import com.taskflow.user.exception.ProtectedUserOperationException;
@@ -114,6 +115,14 @@ public class GlobalExceptionHandler {
         return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(NotificationNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotificationNotFoundException(
+            NotificationNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        return errorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
             IllegalArgumentException ex,
@@ -167,4 +176,3 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(body);
     }
 }
-

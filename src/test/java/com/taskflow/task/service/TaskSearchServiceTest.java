@@ -2,6 +2,8 @@ package com.taskflow.task.service;
 
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
+import com.taskflow.activity.service.ActivityService;
+import com.taskflow.notification.service.NotificationService;
 import com.taskflow.task.dto.TaskResponse;
 import com.taskflow.task.model.Task;
 import com.taskflow.task.model.TaskPriority;
@@ -36,6 +38,8 @@ class TaskSearchServiceTest {
     @Mock private TaskRepository taskRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ActivityService activityService;
+    @Mock private NotificationService notificationService;
     @InjectMocks private TaskService taskService;
 
     @Test

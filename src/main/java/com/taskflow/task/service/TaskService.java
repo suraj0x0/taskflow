@@ -2,6 +2,8 @@ package com.taskflow.task.service;
 
 import com.taskflow.activity.model.ActivityType;
 import com.taskflow.activity.service.ActivityService;
+import com.taskflow.notification.model.NotificationType;
+import com.taskflow.notification.service.NotificationService;
 import com.taskflow.project.exception.ProjectNotFoundException;
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
@@ -37,13 +39,16 @@ public class TaskService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final ActivityService activityService;
+    private final NotificationService notificationService;
 
     public TaskService(TaskRepository taskRepository, ProjectRepository projectRepository,
-                       UserRepository userRepository, ActivityService activityService) {
+                       UserRepository userRepository, ActivityService activityService,
+                       NotificationService notificationService) {
         this.taskRepository = taskRepository;
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.activityService = activityService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -112,9 +117,18 @@ public class TaskService {
         if (worker.getRole() != Role.WORKER) {
             throw new IllegalArgumentException("Tasks may only be assigned to workers");
         }
+        User previousAssignee = task.getAssignee();
         task.setAssignee(worker);
         Task saved = taskRepository.save(task);
         activityService.record(saved.getId(), user, ActivityType.TASK_ASSIGNED, "Task assigned");
+        if (previousAssignee == null || !previousAssignee.getId().equals(worker.getId())) {
+            notificationService.createNotification(
+                    worker,
+                    saved.getId(),
+                    NotificationType.TASK_ASSIGNED,
+                    "You have been assigned a task: " + saved.getTitle()
+            );
+        }
         return toResponse(saved);
     }
 
@@ -134,6 +148,15 @@ public class TaskService {
         task.setStatus(request.getStatus());
         Task saved = taskRepository.save(task);
         activityService.record(saved.getId(), worker, ActivityType.TASK_STATUS_CHANGED, "Task status changed");
+        User creator = task.getCreatedBy();
+        if (!creator.getId().equals(worker.getId())) {
+            notificationService.createNotification(
+                    creator,
+                    saved.getId(),
+                    NotificationType.TASK_STATUS_CHANGED,
+                    "Task '" + saved.getTitle() + "' changed status to " + saved.getStatus() + "."
+            );
+        }
         return toResponse(saved);
     }
 
