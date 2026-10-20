@@ -1,5 +1,7 @@
 package com.taskflow.task.service;
 
+import com.taskflow.activity.model.ActivityType;
+import com.taskflow.activity.service.ActivityService;
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
 import com.taskflow.task.dto.AssignTaskRequest;
@@ -16,6 +18,7 @@ import com.taskflow.user.model.User;
 import com.taskflow.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,6 +31,9 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +43,7 @@ class TaskServiceTest {
     @Mock private TaskRepository taskRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ActivityService activityService;
     @InjectMocks private TaskService taskService;
 
     @Test
@@ -45,7 +52,11 @@ class TaskServiceTest {
         Project project = project(admin);
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            task.setId(UUID.randomUUID());
+            return task;
+        });
 
         var response = taskService.createTask(project.getId(), "admin@example.com",
                 new CreateTaskRequest(" Task ", "Description", TaskPriority.HIGH));
@@ -55,6 +66,7 @@ class TaskServiceTest {
         assertEquals(project.getId(), response.projectId());
         assertEquals(admin.getId(), response.createdById());
         verify(taskRepository).save(any(Task.class));
+        verify(activityService).record(response.id(), admin, ActivityType.TASK_CREATED, "Task created");
     }
 
     @Test
@@ -68,6 +80,7 @@ class TaskServiceTest {
                 UUID.randomUUID(), "worker@example.com", new UpdateTaskRequest("Task", null, null, null)));
         assertThrows(AccessDeniedException.class, () -> taskService.deleteTask(
                 UUID.randomUUID(), "worker@example.com"));
+        verify(activityService, never()).record(any(), any(), any(), any());
     }
 
     @Test
@@ -87,8 +100,12 @@ class TaskServiceTest {
         assertEquals("New", response.title());
         assertEquals(TaskStatus.IN_PROGRESS, response.status());
         assertEquals(TaskPriority.HIGH, response.priority());
+        verify(activityService).record(taskId, manager, ActivityType.TASK_UPDATED, "Task updated");
+
         taskService.deleteTask(taskId, "manager@example.com");
-        verify(taskRepository).delete(task);
+        InOrder inOrder = inOrder(activityService, taskRepository);
+        inOrder.verify(activityService).record(taskId, manager, ActivityType.TASK_DELETED, "Task deleted");
+        inOrder.verify(taskRepository).delete(task);
     }
 
     @Test
@@ -140,6 +157,9 @@ class TaskServiceTest {
             new AssignTaskRequest(worker.getId()), "admin@example.com").assigneeId());
         assertEquals(worker.getId(), taskService.assignTask(managerTask.getId(),
             new AssignTaskRequest(worker.getId()), "manager@example.com").assigneeId());
+
+        verify(activityService).record(adminTask.getId(), admin, ActivityType.TASK_ASSIGNED, "Task assigned");
+        verify(activityService).record(managerTask.getId(), manager, ActivityType.TASK_ASSIGNED, "Task assigned");
         }
 
         @Test
@@ -179,6 +199,8 @@ class TaskServiceTest {
         taskService.updateTaskStatus(task.getId(), "worker@example.com",
             new UpdateTaskStatusRequest(TaskStatus.DONE));
         assertEquals(TaskStatus.DONE, task.getStatus());
+
+        verify(activityService, times(2)).record(task.getId(), worker, ActivityType.TASK_STATUS_CHANGED, "Task status changed");
         }
 
         @Test

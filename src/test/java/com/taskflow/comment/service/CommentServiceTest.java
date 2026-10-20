@@ -1,7 +1,11 @@
 package com.taskflow.comment.service;
 
+import com.taskflow.activity.model.ActivityType;
+import com.taskflow.activity.service.ActivityService;
 import com.taskflow.comment.dto.CommentResponse;
 import com.taskflow.comment.dto.CreateCommentRequest;
+import com.taskflow.comment.dto.UpdateCommentRequest;
+import com.taskflow.comment.exception.CommentNotFoundException;
 import com.taskflow.comment.model.Comment;
 import com.taskflow.comment.repository.CommentRepository;
 import com.taskflow.project.model.Project;
@@ -20,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +44,7 @@ class CommentServiceTest {
     @Mock private CommentRepository commentRepository;
     @Mock private TaskRepository taskRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ActivityService activityService;
     @InjectMocks private CommentService commentService;
 
     @Test
@@ -66,6 +72,91 @@ class CommentServiceTest {
         verify(commentRepository).save(captor.capture());
         assertEquals(task, captor.getValue().getTask());
         assertEquals(author, captor.getValue().getAuthor());
+        verify(activityService).record(task.getId(), author, ActivityType.COMMENT_CREATED, "Comment created");
+    }
+
+    @Test
+    void authorCanUpdateComment() {
+        User author = user("author@example.com", "Author");
+        Task task = task(author);
+        Comment comment = comment("Original content", task, author, Instant.now());
+        when(commentRepository.findById(comment.getId())).thenReturn(Optional.of(comment));
+        when(userRepository.findByEmail("author@example.com")).thenReturn(Optional.of(author));
+        when(commentRepository.save(any(Comment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CommentResponse response = commentService.updateComment(comment.getId(),
+                new UpdateCommentRequest("  Updated content  "), " AUTHOR@EXAMPLE.COM ");
+
+        assertEquals("Updated content", response.content());
+        assertEquals("Updated content", comment.getContent());
+        verify(commentRepository).save(comment);
+        verify(activityService).record(task.getId(), author, ActivityType.COMMENT_UPDATED, "Comment updated");
+    }
+
+    @Test
+    void updateCommentRejectsNonAuthorWithAccessDeniedException() {
+        User author = user("author@example.com", "Author");
+        User otherUser = user("other@example.com", "Other");
+        Task task = task(author);
+        Comment comment = comment("Original content", task, author, Instant.now());
+        when(commentRepository.findById(comment.getId())).thenReturn(Optional.of(comment));
+        when(userRepository.findByEmail("other@example.com")).thenReturn(Optional.of(otherUser));
+
+        assertThrows(AccessDeniedException.class, () -> commentService.updateComment(
+                comment.getId(), new UpdateCommentRequest("New content"), "other@example.com"));
+        verify(commentRepository, never()).save(any(Comment.class));
+        verify(activityService, never()).record(any(), any(), any(), any());
+    }
+
+    @Test
+    void updateCommentRejectsMissingCommentWithCommentNotFoundException() {
+        UUID commentId = UUID.randomUUID();
+        when(commentRepository.findById(commentId)).thenReturn(Optional.empty());
+
+        assertThrows(CommentNotFoundException.class, () -> commentService.updateComment(
+                commentId, new UpdateCommentRequest("New content"), "author@example.com"));
+        verify(commentRepository, never()).save(any(Comment.class));
+        verify(activityService, never()).record(any(), any(), any(), any());
+    }
+
+    @Test
+    void authorCanDeleteComment() {
+        User author = user("author@example.com", "Author");
+        Task task = task(author);
+        Comment comment = comment("Content to delete", task, author, Instant.now());
+        when(commentRepository.findById(comment.getId())).thenReturn(Optional.of(comment));
+        when(userRepository.findByEmail("author@example.com")).thenReturn(Optional.of(author));
+
+        commentService.deleteComment(comment.getId(), " AUTHOR@EXAMPLE.COM ");
+
+        verify(activityService).record(task.getId(), author, ActivityType.COMMENT_DELETED, "Comment deleted");
+        verify(commentRepository).delete(comment);
+    }
+
+    @Test
+    void deleteCommentRejectsNonAuthorWithAccessDeniedException() {
+        User author = user("author@example.com", "Author");
+        User otherUser = user("other@example.com", "Other");
+        Task task = task(author);
+        Comment comment = comment("Content to delete", task, author, Instant.now());
+        when(commentRepository.findById(comment.getId())).thenReturn(Optional.of(comment));
+        when(userRepository.findByEmail("other@example.com")).thenReturn(Optional.of(otherUser));
+
+        assertThrows(AccessDeniedException.class, () -> commentService.deleteComment(
+                comment.getId(), "other@example.com"));
+        verify(commentRepository, never()).delete(any(Comment.class));
+        verify(activityService, never()).record(any(), any(), any(), any());
+    }
+
+    @Test
+    void deleteCommentRejectsMissingCommentWithCommentNotFoundException() {
+        UUID commentId = UUID.randomUUID();
+        when(commentRepository.findById(commentId)).thenReturn(Optional.empty());
+
+        assertThrows(CommentNotFoundException.class, () -> commentService.deleteComment(
+                commentId, "author@example.com"));
+        verify(commentRepository, never()).delete(any(Comment.class));
+        verify(activityService, never()).record(any(), any(), any(), any());
     }
 
     @Test

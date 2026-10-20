@@ -1,5 +1,7 @@
 package com.taskflow.task.service;
 
+import com.taskflow.activity.model.ActivityType;
+import com.taskflow.activity.service.ActivityService;
 import com.taskflow.project.exception.ProjectNotFoundException;
 import com.taskflow.project.model.Project;
 import com.taskflow.project.repository.ProjectRepository;
@@ -34,12 +36,14 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final ActivityService activityService;
 
     public TaskService(TaskRepository taskRepository, ProjectRepository projectRepository,
-                       UserRepository userRepository) {
+                       UserRepository userRepository, ActivityService activityService) {
         this.taskRepository = taskRepository;
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
+        this.activityService = activityService;
     }
 
     @Transactional
@@ -49,7 +53,9 @@ public class TaskService {
         Project project = findProject(projectId);
         Task task = new Task(request.getTitle().trim(), request.getDescription(), TaskStatus.TODO,
                 request.getPriority(), project, user);
-        return toResponse(taskRepository.save(task));
+        Task saved = taskRepository.save(task);
+        activityService.record(saved.getId(), user, ActivityType.TASK_CREATED, "Task created");
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -78,7 +84,8 @@ public class TaskService {
 
     @Transactional
     public TaskResponse updateTask(UUID id, String authenticatedEmail, UpdateTaskRequest request) {
-        requireManagerOrAdmin(findUser(authenticatedEmail));
+        User user = findUser(authenticatedEmail);
+        requireManagerOrAdmin(user);
         Task task = findTask(id);
         if (request.getTitle() != null) {
             String title = request.getTitle().trim();
@@ -90,12 +97,15 @@ public class TaskService {
         if (request.getDescription() != null) task.setDescription(request.getDescription());
         if (request.getStatus() != null) task.setStatus(request.getStatus());
         if (request.getPriority() != null) task.setPriority(request.getPriority());
-        return toResponse(taskRepository.save(task));
+        Task saved = taskRepository.save(task);
+        activityService.record(saved.getId(), user, ActivityType.TASK_UPDATED, "Task updated");
+        return toResponse(saved);
     }
 
     @Transactional
     public TaskResponse assignTask(UUID id, AssignTaskRequest request, String authenticatedEmail) {
-        requireManagerOrAdmin(findUser(authenticatedEmail));
+        User user = findUser(authenticatedEmail);
+        requireManagerOrAdmin(user);
         Task task = findTask(id);
         User worker = userRepository.findById(request.getWorkerId())
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -103,7 +113,9 @@ public class TaskService {
             throw new IllegalArgumentException("Tasks may only be assigned to workers");
         }
         task.setAssignee(worker);
-        return toResponse(taskRepository.save(task));
+        Task saved = taskRepository.save(task);
+        activityService.record(saved.getId(), user, ActivityType.TASK_ASSIGNED, "Task assigned");
+        return toResponse(saved);
     }
 
     @Transactional
@@ -120,13 +132,18 @@ public class TaskService {
             throw new IllegalArgumentException("Invalid task status transition");
         }
         task.setStatus(request.getStatus());
-        return toResponse(taskRepository.save(task));
+        Task saved = taskRepository.save(task);
+        activityService.record(saved.getId(), worker, ActivityType.TASK_STATUS_CHANGED, "Task status changed");
+        return toResponse(saved);
     }
 
     @Transactional
     public void deleteTask(UUID id, String authenticatedEmail) {
-        requireManagerOrAdmin(findUser(authenticatedEmail));
-        taskRepository.delete(findTask(id));
+        User user = findUser(authenticatedEmail);
+        requireManagerOrAdmin(user);
+        Task task = findTask(id);
+        activityService.record(task.getId(), user, ActivityType.TASK_DELETED, "Task deleted");
+        taskRepository.delete(task);
     }
 
     private Task findTask(UUID id) {
