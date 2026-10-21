@@ -1,6 +1,7 @@
 package com.taskflow.activity.model;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Index;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -14,7 +15,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "activities")
+@Table(
+    name = "activities",
+    indexes = @Index(
+        name = "idx_activities_task_created_at",
+        columnList = "task_id, created_at"
+    )
+)
 public class Activity {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", nullable = false, updatable = false)
