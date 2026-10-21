@@ -2,6 +2,7 @@ package com.taskflow.security;
 
 import com.taskflow.user.model.User;
 import com.taskflow.user.repository.UserRepository;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,15 +41,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String token = authorization.substring(7);
-        if (jwtService.isTokenValid(token)) {
-            try {
-                String email = jwtService.extractEmail(token);
-                userRepository.findByEmail(email).ifPresent(user -> authenticate(request, user));
-            } catch (RuntimeException ignored) {
-                SecurityContextHolder.clearContext();
-            }
+        String email;
+        try {
+            email = jwtService.extractEmail(token);
+        } catch (JwtException | IllegalArgumentException exception) {
+            SecurityContextHolder.clearContext();
+            filterChain.doFilter(request, response);
+            return;
         }
 
+        userRepository.findByEmail(email).ifPresent(user -> authenticate(request, user));
         filterChain.doFilter(request, response);
     }
 

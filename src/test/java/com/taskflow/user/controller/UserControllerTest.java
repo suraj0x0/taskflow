@@ -133,13 +133,43 @@ class UserControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(patch("/api/users/{id}/role", id).contentType(MediaType.APPLICATION_JSON).content(
                         objectMapper.writeValueAsString(new UpdateRoleRequest(Role.WORKER))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.path").value("/api/users/" + id + "/role"));
     }
 
     @Test
     void unauthenticatedUserIsRejected() throws Exception {
-        mockMvc.perform(get("/api/users")).andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.message").value("Unauthorized"))
+                .andExpect(jsonPath("$.path").value("/api/users"));
+        mockMvc.perform(get("/api/users/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.path").value("/api/users/me"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void malformedPathVariableReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/users/not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid request parameter"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void unexpectedErrorsReturnSafeInternalServerError() throws Exception {
+        when(userService.findAll()).thenThrow(new IllegalStateException("sensitive-internal-detail"));
+
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("Internal server error"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("sensitive-internal-detail"))))
+                .andExpect(jsonPath("$.trace").doesNotExist());
     }
 
     @Test

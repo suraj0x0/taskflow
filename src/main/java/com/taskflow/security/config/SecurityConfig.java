@@ -2,10 +2,12 @@ package com.taskflow.security.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taskflow.security.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -13,6 +15,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import java.time.Instant;
 import java.util.Map;
 
 @Configuration
@@ -36,6 +39,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
+                                "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me", "/api/users/me/password").authenticated()
                         .requestMatchers("/api/notifications/**").authenticated()
@@ -63,21 +68,26 @@ public class SecurityConfig {
                         .anyRequest().permitAll()
                 )
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint((request, response, exception) -> writeError(response, 401, "Unauthorized"))
-                        .accessDeniedHandler((request, response, exception) -> writeError(response, 403, "Forbidden"))
+                        .authenticationEntryPoint((request, response, exception) ->
+                                writeError(request, response, HttpStatus.UNAUTHORIZED))
+                        .accessDeniedHandler((request, response, exception) ->
+                                writeError(request, response, HttpStatus.FORBIDDEN))
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    private void writeError(HttpServletResponse response, int status, String error) throws java.io.IOException {
-        response.setStatus(status);
+    private void writeError(HttpServletRequest request, HttpServletResponse response, HttpStatus status)
+            throws java.io.IOException {
+        response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write(objectMapper.writeValueAsString(Map.of(
-                "status", status,
-                "error", error,
-                "message", error
+                "timestamp", Instant.now().toString(),
+                "status", status.value(),
+                "error", status.getReasonPhrase(),
+                "message", status.getReasonPhrase(),
+                "path", request.getRequestURI()
         )));
     }
 }

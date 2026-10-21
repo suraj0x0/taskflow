@@ -2,7 +2,9 @@ package com.taskflow.security;
 
 import com.taskflow.user.model.User;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +24,9 @@ public class JwtService {
             @Value("${taskflow.jwt.expiration-ms}") long expirationMs
     ) {
         this.signingKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+        if (expirationMs <= 0) {
+            throw new IllegalArgumentException("JWT expiration must be positive");
+        }
         this.expirationMs = expirationMs;
     }
 
@@ -36,14 +41,18 @@ public class JwtService {
     }
 
     public String extractEmail(String token) {
-        return parseClaims(token).getSubject();
+        String subject = parseClaims(token).getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new MalformedJwtException("JWT subject is missing");
+        }
+        return subject;
     }
 
     public boolean isTokenValid(String token) {
         try {
-            parseClaims(token);
+            extractEmail(token);
             return true;
-        } catch (RuntimeException exception) {
+        } catch (JwtException | IllegalArgumentException exception) {
             return false;
         }
     }

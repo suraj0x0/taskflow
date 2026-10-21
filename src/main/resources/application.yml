@@ -19,9 +19,16 @@ spring:
 
 taskflow:
   jwt:
-    # Development-only fallback; set TASKFLOW_JWT_SECRET in production.
+    # Local-development fallback only. The prod profile requires TASKFLOW_JWT_SECRET.
     secret: ${TASKFLOW_JWT_SECRET:ZGV2ZWxvcG1lbnQtb25seS10YXNrZmxvdy1qd3Qtc2VjcmV0LWtleS0zMmJ5dGVz}
     expiration-ms: ${TASKFLOW_JWT_EXPIRATION_MS:86400000}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
 
 management:
   endpoints:

@@ -11,6 +11,7 @@ import com.taskflow.auth.service.AuthService;
 import com.taskflow.security.JwtAuthenticationFilter;
 import com.taskflow.security.JwtService;
 import com.taskflow.security.config.SecurityConfig;
+import io.jsonwebtoken.MalformedJwtException;
 import com.taskflow.user.model.Role;
 import com.taskflow.user.model.User;
 import com.taskflow.user.repository.UserRepository;
@@ -97,6 +98,22 @@ class AuthControllerTest {
     }
 
     @Test
+    void registrationRejectsNameAndEmailBeyondSupportedLengths() throws Exception {
+        RegisterRequest invalidRequest = new RegisterRequest(
+                "N".repeat(101),
+                "a".repeat(244) + "@example.com",
+                "StrongPassword123!"
+        );
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.name").exists())
+                .andExpect(jsonPath("$.errors.email").exists());
+    }
+
+    @Test
     @DisplayName("POST /api/auth/register with duplicate email returns 409 Conflict")
     void shouldReturnConflictOnDuplicateEmail() throws Exception {
         when(authService.register(any(RegisterRequest.class)))
@@ -110,7 +127,17 @@ class AuthControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.error").value("Conflict"))
-                .andExpect(jsonPath("$.message").value("Email is already registered: duplicate@example.com"));
+                .andExpect(jsonPath("$.message").value("Resource already exists"));
+    }
+
+    @Test
+    void malformedRequestBodyReturnsSafeBadRequest() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Malformed request body"))
+                .andExpect(jsonPath("$.trace").doesNotExist());
     }
 
     @Test
@@ -199,10 +226,10 @@ class AuthControllerTest {
     @Test
     @DisplayName("GET /api/auth/me with an invalid JWT returns 401 Unauthorized")
     void shouldRejectInvalidJwt() throws Exception {
-        when(jwtService.isTokenValid("invalid-token")).thenReturn(false);
+        when(jwtService.extractEmail("invalid-token"))
+                .thenThrow(new MalformedJwtException("Invalid token"));
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer invalid-token"))
                 .andExpect(status().isUnauthorized());
     }
 }
-
