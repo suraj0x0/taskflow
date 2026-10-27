@@ -92,8 +92,10 @@ class TaskServiceTest {
     @Test
     void managerCanUpdateAndDeleteTask() {
         User manager = user("manager@example.com", Role.MANAGER);
+        User worker = user("worker@example.com", Role.WORKER);
         Project project = project(manager);
         Task task = new Task("Old", "Old description", TaskStatus.TODO, TaskPriority.LOW, project, manager);
+        task.setAssignee(worker);
         UUID taskId = UUID.randomUUID();
         task.setId(taskId);
         when(userRepository.findByEmail("manager@example.com")).thenReturn(Optional.of(manager));
@@ -107,6 +109,9 @@ class TaskServiceTest {
         assertEquals(TaskStatus.IN_PROGRESS, response.status());
         assertEquals(TaskPriority.HIGH, response.priority());
         verify(activityService).record(taskId, manager, ActivityType.TASK_UPDATED, "Task updated");
+        verify(activityService).record(taskId, manager, ActivityType.TASK_STATUS_CHANGED, "Task status changed");
+        verify(notificationService).createNotification(worker, taskId, NotificationType.TASK_STATUS_CHANGED,
+                "Task 'New' changed status to IN_PROGRESS.");
 
         taskService.deleteTask(taskId, "manager@example.com");
         InOrder inOrder = inOrder(activityService, taskRepository);

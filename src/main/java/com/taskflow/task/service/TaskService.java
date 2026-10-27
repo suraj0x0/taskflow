@@ -92,6 +92,7 @@ public class TaskService {
         User user = findUser(authenticatedEmail);
         requireManagerOrAdmin(user);
         Task task = findTask(id);
+        TaskStatus previousStatus = task.getStatus();
         if (request.getTitle() != null) {
             String title = request.getTitle().trim();
             if (title.isEmpty()) {
@@ -104,6 +105,17 @@ public class TaskService {
         if (request.getPriority() != null) task.setPriority(request.getPriority());
         Task saved = taskRepository.save(task);
         activityService.record(saved.getId(), user, ActivityType.TASK_UPDATED, "Task updated");
+        if (request.getStatus() != null && request.getStatus() != previousStatus) {
+            activityService.record(saved.getId(), user, ActivityType.TASK_STATUS_CHANGED, "Task status changed");
+            if (saved.getAssignee() != null) {
+                notificationService.createNotification(
+                        saved.getAssignee(),
+                        saved.getId(),
+                        NotificationType.TASK_STATUS_CHANGED,
+                        "Task '" + saved.getTitle() + "' changed status to " + saved.getStatus() + "."
+                );
+            }
+        }
         return toResponse(saved);
     }
 
