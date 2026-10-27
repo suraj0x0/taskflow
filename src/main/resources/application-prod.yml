@@ -3,3 +3,8 @@ taskflow:
     # Set to a Base64-encoded key containing at least 32 cryptographically random bytes.
     secret: ${TASKFLOW_JWT_SECRET}
     expiration-ms: ${TASKFLOW_JWT_EXPIRATION_MS:86400000}
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
